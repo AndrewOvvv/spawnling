@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package spawnling.v1;
+
+option go_package = "github.com/AndrewOvvv/spawnling/gen/proto/v1;spawnlingv1";
+
+// ─── Instance ────────────────────────────────────────────────────────────────
+
+service InstanceService {
+  rpc Create  (CreateInstanceRequest)  returns (CreateInstanceResponse);
+  rpc Delete  (DeleteInstanceRequest)  returns (DeleteInstanceResponse);
+  rpc Start   (StartInstanceRequest)   returns (StartInstanceResponse);
+  rpc Stop    (StopInstanceRequest)    returns (StopInstanceResponse);
+  rpc Status  (StatusRequest)          returns (StatusResponse);
+  rpc List    (ListRequest)            returns (ListResponse);
+}
+
+message CreateInstanceRequest {
+  string name         = 1;
+  string server_type  = 2;
+  string version      = 3;
+  int32  port         = 4;
+  int32  max_memory   = 5;
+  int32  min_memory   = 6;
+  bool   auto_restart = 7;
+}
+message CreateInstanceResponse {}
+
+message DeleteInstanceRequest { string name = 1; }
+message DeleteInstanceResponse {}
+
+message StartInstanceRequest  { string name = 1; }
+message StartInstanceResponse {}
+
+message StopInstanceRequest   { string name = 1; }
+message StopInstanceResponse  {}
+
+message StatusRequest  { string name = 1; }
+message StatusResponse {
+  string   status     = 1;
+  double   cpu_pct    = 2;
+  int32    memory_mb  = 3;
+  repeated string players = 4;
+  int32    max_players = 5;
+  int64    uptime_secs = 6;
+}
+
+message ListRequest {}
+message ListResponse { repeated string names = 1; }
+
+// ─── Logs ────────────────────────────────────────────────────────────────────
+
+service LogService {
+  // Server-side stream: tails log output in real time.
+  rpc Tail (TailRequest) returns (stream LogLine);
+}
+
+message TailRequest {
+  string name  = 1;
+  int32  lines = 2; // last N lines to replay before streaming
+}
+message LogLine {
+  int64  timestamp_ms = 1;
+  string text         = 2;
+}
+
+// ─── Console ─────────────────────────────────────────────────────────────────
+
+service ConsoleService {
+  // Bidirectional stream: send commands, receive output.
+  rpc Attach (stream ConsoleInput) returns (stream ConsoleOutput);
+}
+
+message ConsoleInput  { string instance_name = 1; string command = 2; }
+message ConsoleOutput { string text = 1; }
+
+// ─── Tunnel ──────────────────────────────────────────────────────────────────
+
+service TunnelService {
+  rpc Start   (TunnelStartRequest)  returns (TunnelStartResponse);
+  rpc Stop    (TunnelStopRequest)   returns (TunnelStopResponse);
+  rpc Status  (TunnelStatusRequest) returns (TunnelStatusResponse);
+}
+
+message TunnelStartRequest  { string instance_name = 1; }
+message TunnelStartResponse { string address = 1; }
+
+message TunnelStopRequest   { string instance_name = 1; }
+message TunnelStopResponse  {}
+
+message TunnelStatusRequest  { string instance_name = 1; }
+message TunnelStatusResponse { bool active = 1; string address = 2; }
+
+// ─── Backup ──────────────────────────────────────────────────────────────────
+
+service BackupService {
+  rpc Create  (BackupCreateRequest)  returns (BackupCreateResponse);
+  rpc List    (BackupListRequest)    returns (BackupListResponse);
+  rpc Restore (BackupRestoreRequest) returns (BackupRestoreResponse);
+}
+
+message BackupCreateRequest  { string instance_name = 1; }
+message BackupCreateResponse { string path = 1; }
+
+message BackupListRequest    { string instance_name = 1; }
+message BackupListResponse   { repeated BackupEntry entries = 1; }
+
+message BackupEntry {
+  string path         = 1;
+  int64  created_at   = 2;
+  int64  size_bytes   = 3;
+}
+
+message BackupRestoreRequest  { string archive_path = 1; string instance_name = 2; }
+message BackupRestoreResponse {}

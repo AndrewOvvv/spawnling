@@ -1,0 +1,32 @@
+version: "2"
+packages:
+  github.com/AndrewOvvv/spawnling/internal/runtime/process:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      outpkg: mocks
+      mockname: "Mock{{.InterfaceName}}"
+      filename: "mock_{{snakecase .InterfaceName}}.go"
+  github.com/AndrewOvvv/spawnling/internal/instance:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      outpkg: mocks
+      mockname: "Mock{{.InterfaceName}}"
+      filename: "mock_{{snakecase .InterfaceName}}.go"
+  github.com/AndrewOvvv/spawnling/internal/monitor:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      outpkg: mocks
+      mockname: "Mock{{.InterfaceName}}"
+      filename: "mock_{{snakecase .InterfaceName}}.go"
+  github.com/AndrewOvvv/spawnling/internal/tunnel:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      outpkg: mocks
+      mockname: "Mock{{.InterfaceName}}"
+      filename: "mock_{{snakecase .InterfaceName}}.go"
+  github.com/AndrewOvvv/spawnling/internal/backup:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      outpkg: mocks
+      mockname: "Mock{{.InterfaceName}}"
+      filename: "mock_{{snakecase .InterfaceName}}.go"
