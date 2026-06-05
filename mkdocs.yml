@@ -1,8 +1,8 @@
 site_name: Spawnling
 site_description: Host, monitor, and manage Minecraft servers from your local machine
 site_url: https://spawnling.github.io/spawnling
-repo_url: https://github.com/spawnling/spawnling
-repo_name: spawnling/spawnling
+repo_url: https://github.com/AndrewOvvv/spawnling
+repo_name: AndrewOvvv/spawnling
 edit_uri: edit/dev/docs/
 
 theme:
@@ -36,6 +36,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Architecture: architecture.md
   - Requirements: requirements.md
   - Release Policy: release.md
   - Branching Strategy: branching.md
