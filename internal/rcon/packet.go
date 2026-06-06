@@ -14,8 +14,10 @@ const (
 
 	// minBodyLen = id(4) + kind(4) + empty payload + null(1) + null(1)
 	minBodyLen int32 = 10
-	// maxPayload is the documented RCON payload limit.
+	// maxPayload is the documented RCON payload limit (bytes, payload only).
 	maxPayload int32 = 1446
+	// maxBodyLen = id(4) + kind(4) + maxPayload + null(1) + null(1)
+	maxBodyLen int32 = 8 + maxPayload + 2
 )
 
 type packet struct {
@@ -26,13 +28,18 @@ type packet struct {
 
 func writePacket(w io.Writer, p packet) error {
 	payload := []byte(p.payload)
+	if int32(len(payload)) > maxPayload {
+		return fmt.Errorf("rcon: payload too large (%d bytes, max %d)", len(payload), maxPayload)
+	}
+
 	// bodyLen = id(4) + kind(4) + payload + null(1) + null(1)
 	bodyLen := int32(4 + 4 + len(payload) + 2)
 
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, bodyLen)
-	binary.Write(buf, binary.LittleEndian, p.id)
-	binary.Write(buf, binary.LittleEndian, p.kind)
+	// bytes.Buffer.Write never fails; errors are explicitly ignored.
+	binary.Write(buf, binary.LittleEndian, bodyLen) //nolint:errcheck
+	binary.Write(buf, binary.LittleEndian, p.id)    //nolint:errcheck
+	binary.Write(buf, binary.LittleEndian, p.kind)  //nolint:errcheck
 	buf.Write(payload)
 	buf.WriteByte(0)
 	buf.WriteByte(0)
@@ -46,7 +53,7 @@ func readPacket(r io.Reader) (packet, error) {
 	if err := binary.Read(r, binary.LittleEndian, &bodyLen); err != nil {
 		return packet{}, fmt.Errorf("rcon: read length: %w", err)
 	}
-	if bodyLen < minBodyLen || bodyLen > maxPayload+10 {
+	if bodyLen < minBodyLen || bodyLen > maxBodyLen {
 		return packet{}, fmt.Errorf("rcon: invalid packet length %d", bodyLen)
 	}
 
