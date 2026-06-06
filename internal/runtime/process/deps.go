@@ -13,6 +13,8 @@ import (
 //go:generate mockery --name=ProcessHandle --output=./mocks
 //go:generate mockery --name=JARProvider --output=./mocks
 //go:generate mockery --name=ProcStats --output=./mocks
+//go:generate mockery --name=LogStream --output=./mocks
+//go:generate mockery --name=LogStreamFactory --output=./mocks
 
 // FileSystem abstracts OS file I/O.
 type FileSystem interface {
@@ -46,4 +48,20 @@ type JARProvider interface {
 // ProcStats reads CPU and memory usage for a given PID.
 type ProcStats interface {
 	Read(pid int) (cpuPct float64, memMB int, err error)
+}
+
+// LogStream collects log lines from a server process and exposes them as a
+// readable stream. One LogStream is created per server instance.
+type LogStream interface {
+	// WriteLine appends a line to the stream. Called by pipeOutput.
+	WriteLine(line string)
+	// Close signals that no more lines will arrive (process exited).
+	Close()
+	// Reader returns an io.ReadCloser yielding buffered history then live lines.
+	Reader(ctx context.Context) io.ReadCloser
+}
+
+// LogStreamFactory creates a new LogStream for a server instance.
+type LogStreamFactory interface {
+	NewLogStream() LogStream
 }

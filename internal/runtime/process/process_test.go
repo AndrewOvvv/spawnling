@@ -1,13 +1,11 @@
 package process_test
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	gosched "runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -15,7 +13,9 @@ import (
 
 	"github.com/AndrewOvvv/spawnling/internal/runtime"
 	"github.com/AndrewOvvv/spawnling/internal/runtime/process"
+	"github.com/AndrewOvvv/spawnling/internal/runtime/process/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -262,7 +262,7 @@ func testSpec(name string) runtime.InstanceSpec {
 
 func newBackend(t *testing.T, mfs *memFS, spawner *fakeSpawner) *process.ProcessBackend {
 	t.Helper()
-	return process.NewProcessBackend(testConfig(), mfs, spawner, noopJARs{}, &fakeStats{cpu: 1.5, mem: 512})
+	return process.NewProcessBackend(testConfig(), mfs, spawner, noopJARs{}, &fakeStats{cpu: 1.5, mem: 512}, process.DefaultLogStreamFactory{})
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -401,54 +401,39 @@ func TestExec_ErrorWhenNotRunning(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestLogs_StreamsOutputLines(t *testing.T) {
+func TestLogs_DelegatesToLogStream(t *testing.T) {
 	mfs := newMemFS()
 	handle := newFakeHandle()
-	b := newBackend(t, mfs, &fakeSpawner{handle: handle})
+	t.Cleanup(func() { handle.Exit() })
+
+	// Inject mock LogStream that returns a known sentinel reader.
+	// Verifies that Logs() calls LogStream.Reader() and returns its result.
+	sentinel := io.NopCloser(strings.NewReader("sentinel"))
+
+	mockStream := mocks.NewMockLogStream(t)
+	mockStream.EXPECT().Reader(mock.Anything).Return(sentinel)
+	mockStream.EXPECT().WriteLine(mock.Anything).Maybe()
+	mockStream.EXPECT().Close().Maybe()
+
+	mockFactory := mocks.NewMockLogStreamFactory(t)
+	mockFactory.EXPECT().NewLogStream().Return(mockStream)
+
+	b := process.NewProcessBackend(testConfig(), mfs, &fakeSpawner{handle: handle}, noopJARs{}, &fakeStats{}, mockFactory)
 
 	require.NoError(t, b.Create(context.Background(), testSpec("srv")))
 	require.NoError(t, b.Start(context.Background(), "srv"))
-	t.Cleanup(func() { handle.Exit() })
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	rc, err := b.Logs(context.Background(), "srv")
 
-	rc, err := b.Logs(ctx, "srv")
 	require.NoError(t, err)
-	defer rc.Close()
+	data, _ := io.ReadAll(rc)
+	assert.Equal(t, "sentinel", string(data))
+}
 
-	// Scanner goroutine collects lines; cancels ctx after seeing both expected lines.
-	resultCh := make(chan []string, 1)
-	go func() {
-		scanner := bufio.NewScanner(rc)
-		var lines []string
-		for scanner.Scan() {
-			lines = append(lines, scanner.Text())
-			if len(lines) >= 2 {
-				cancel()
-				break
-			}
-		}
-		resultCh <- lines
-	}()
-
-	// Yield so that pipeOutput goroutine has a chance to start blocking on
-	// syncBuf.Read before we write. This ensures data written below flows
-	// through pipeOutput → logBuffer → live channel rather than being dropped.
-	gosched.Gosched()
-
-	// syncBuf makes WriteOutput non-blocking: data is buffered immediately and
-	// pipeOutput reads it asynchronously, feeding the log pipeline.
-	handle.WriteOutput("[Server] Done!")
-	handle.WriteOutput("[Server] Player joined")
-
-	select {
-	case lines := <-resultCh:
-		assert.Contains(t, lines, "[Server] Done!")
-		assert.Contains(t, lines, "[Server] Player joined")
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout: log lines did not arrive within 3s")
-	}
+func TestLogs_ErrorWhenNotRunning(t *testing.T) {
+	b := newBackend(t, newMemFS(), nil)
+	_, err := b.Logs(context.Background(), "ghost")
+	require.Error(t, err)
 }
 
 func TestDelete_RemovesDirectory(t *testing.T) {

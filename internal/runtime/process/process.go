@@ -1,7 +1,6 @@
 package process
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -26,7 +25,7 @@ type Config struct {
 type serverProcess struct {
 	spec      runtime.InstanceSpec
 	handle    ProcessHandle
-	logs      *logBuffer
+	logs      LogStream
 	done      chan struct{} // closed when the process exits
 	stopping  atomic.Bool  // set by Stop to suppress auto-restart
 	startedAt time.Time
@@ -34,26 +33,28 @@ type serverProcess struct {
 
 // ProcessBackend manages Minecraft server processes as child JVM processes.
 type ProcessBackend struct {
-	cfg     Config
-	fs      FileSystem
-	spawner ProcessSpawner
-	jars    JARProvider
-	stats   ProcStats
-	mu      sync.RWMutex
-	running map[string]*serverProcess
+	cfg        Config
+	fs         FileSystem
+	spawner    ProcessSpawner
+	jars       JARProvider
+	stats      ProcStats
+	logFactory LogStreamFactory
+	mu         sync.RWMutex
+	running    map[string]*serverProcess
 }
 
-func NewProcessBackend(cfg Config, fs FileSystem, spawner ProcessSpawner, jars JARProvider, stats ProcStats) *ProcessBackend {
+func NewProcessBackend(cfg Config, fs FileSystem, spawner ProcessSpawner, jars JARProvider, stats ProcStats, logFactory LogStreamFactory) *ProcessBackend {
 	if cfg.JavaPath == "" {
 		cfg.JavaPath = "java"
 	}
 	return &ProcessBackend{
-		cfg:     cfg,
-		fs:      fs,
-		spawner: spawner,
-		jars:    jars,
-		stats:   stats,
-		running: make(map[string]*serverProcess),
+		cfg:        cfg,
+		fs:         fs,
+		spawner:    spawner,
+		jars:       jars,
+		stats:      stats,
+		logFactory: logFactory,
+		running:    make(map[string]*serverProcess),
 	}
 }
 
@@ -119,13 +120,13 @@ func (b *ProcessBackend) Start(ctx context.Context, name string) error {
 	sp := &serverProcess{
 		spec:      spec,
 		handle:    handle,
-		logs:      newLogBuffer(),
+		logs:      b.logFactory.NewLogStream(),
 		done:      make(chan struct{}),
 		startedAt: time.Now(),
 	}
 	b.running[name] = sp
 
-	go b.pipeOutput(sp, handle.Stdout())
+	go PipeOutput(handle.Stdout(), sp.logs)
 	go b.watchExit(ctx, name, sp)
 
 	return nil
@@ -177,7 +178,7 @@ func (b *ProcessBackend) Logs(ctx context.Context, name string) (io.ReadCloser, 
 	if !ok {
 		return nil, fmt.Errorf("process: %q is not running", name)
 	}
-	return sp.logs.reader(ctx), nil
+	return sp.logs.Reader(ctx), nil
 }
 
 // Exec writes a command to the server's stdin.
@@ -219,7 +220,7 @@ func (b *ProcessBackend) Stats(_ context.Context, name string) (runtime.Stats, e
 	}, nil
 }
 
-// ── internal ─────────────────────────────────────────────────────────────────
+// ── internal ──────────────────────────────────────────────────────────────────
 
 func (b *ProcessBackend) instanceDir(name string) string {
 	return filepath.Join(b.cfg.DataDir, name)
@@ -232,15 +233,6 @@ func (b *ProcessBackend) loadSpec(dir string) (runtime.InstanceSpec, error) {
 	}
 	var spec runtime.InstanceSpec
 	return spec, json.Unmarshal(data, &spec)
-}
-
-func (b *ProcessBackend) pipeOutput(sp *serverProcess, stdout io.ReadCloser) {
-	defer stdout.Close()
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		sp.logs.writeLine(scanner.Text())
-	}
-	sp.logs.close()
 }
 
 func (b *ProcessBackend) watchExit(ctx context.Context, name string, sp *serverProcess) {

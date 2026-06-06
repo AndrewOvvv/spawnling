@@ -27,7 +27,8 @@ func newLogBuffer() *logBuffer {
 	}
 }
 
-func (b *logBuffer) writeLine(line string) {
+// WriteLine implements LogStream.
+func (b *logBuffer) WriteLine(line string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
@@ -46,7 +47,8 @@ func (b *logBuffer) writeLine(line string) {
 	}
 }
 
-func (b *logBuffer) close() {
+// Close implements LogStream.
+func (b *logBuffer) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.closed = true
@@ -95,9 +97,8 @@ func (b *logBuffer) subscribe() (history []string, live <-chan string, unsub fun
 	return
 }
 
-// reader returns an io.ReadCloser that yields history then live lines.
-// Closes when ctx is cancelled or the buffer is closed.
-func (b *logBuffer) reader(ctx context.Context) io.ReadCloser {
+// Reader implements LogStream.
+func (b *logBuffer) Reader(ctx context.Context) io.ReadCloser {
 	history, live, unsub := b.subscribe()
 	return &logReader{
 		ctx:     ctx,
